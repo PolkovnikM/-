@@ -1,80 +1,126 @@
-## Архитектура клиент-серверного приложения
+## Схема базы данных
+
+### Структура таблиц
 
 ```mermaid
-flowchart TB
-    subgraph Клиент[ КЛИЕНТСКАЯ ЧАСТЬ]
-        Browser[ Браузер пользователя]
-        HTML[ HTML/CSS/JS]
-        React[ React виджеты]
-        Storage[ localStorage корзина]
-    end
+erDiagram
+    users {
+        int id PK
+        varchar(100) name
+        varchar(100) email UK
+        int age
+        varchar(255) password_hash
+        enum role "admin/user"
+        timestamp created_at
+    }
     
-    subgraph Сервер[ СЕРВЕРНАЯ ЧАСТЬ]
-        Apache[ Apache Web Server]
-        API[ REST API<br>/api/products.php<br>/api/users.php]
-        Auth[ Авторизация<br>login.php / auth.php]
-        Session[ Сессии PHP]
-    end
+    products {
+        int id PK
+        varchar(200) name
+        text description
+        decimal price
+        varchar(50) category
+        int stock
+        varchar(255) image
+        timestamp created_at
+    }
     
-    subgraph Данные[ ХРАНЕНИЕ ДАННЫХ]
-        MySQL[( MySQL<br>users / products / cart)]
-        Logs[ Логи авторизации<br>logs/auth.log]
-    end
+    orders {
+        int id PK
+        int user_id FK
+        decimal total
+        enum status "pending/paid/shipped/delivered/cancelled"
+        timestamp created_at
+    }
     
-    Browser -->|HTTP запрос| Apache
-    Apache -->|Вызов| API
-    Apache -->|Вызов| Auth
-    Auth -->|Создание| Session
+    order_items {
+        int id PK
+        int order_id FK
+        int product_id FK
+        int quantity
+        decimal price
+    }
     
-    API -->|PDO запрос| MySQL
-    Auth -->|PDO запрос| MySQL
+    logs {
+        int id PK
+        varchar(100) user_email
+        varchar(50) action
+        varchar(45) ip_address
+        text message
+        timestamp created_at
+    }
     
-    MySQL -->|JSON ответ| API
-    MySQL -->|Данные пользователя| Auth
-    
-    API -->|JSON| Browser
-    Auth -->|Редирект/HTML| Browser
-    
-    Browser <-->|Чтение/запись| Storage
-    
-    Auth -.->|writeLog()| Logs
+    users ||--o{ orders : "has many"
+    users ||--o{ logs : "has many"
+    orders ||--o{ order_items : "contains"
+    products ||--o{ order_items : "appears in"
 ```
 
-### Описание компонентов
+### Схема связей между таблицами
 
-| Компонент | Технология | Назначение |
-|-----------|------------|------------|
-| **Клиентская часть** | HTML, CSS, JS, React | Отображение интерфейса, корзина в localStorage |
-| **Веб-сервер** | Apache 2.4 | Обработка HTTP-запросов |
-| **REST API** | PHP 8 | GET /products, GET /users, POST /register |
-| **Авторизация** | PHP + Сессии | Вход, регистрация, разграничение ролей |
-| **База данных** | MySQL 8 | Хранение пользователей, товаров, корзины |
-| **Логирование** | Файловая система | Запись событий входа/выхода |
-
-### Схема взаимодействия
-
-```mermaid
-sequenceDiagram
-    participant User as  Пользователь
-    participant Browser as  Браузер
-    participant Server as  PHP Сервер
-    participant DB as  MySQL
-    
-    User->>Browser: Открывает сайт
-    Browser->>Server: GET /index.php
-    Server->>DB: SELECT * FROM products
-    DB-->>Server: JSON с товарами
-    Server-->>Browser: HTML страница
-    
-    User->>Browser: Добавляет товар в корзину
-    Browser->>Browser: localStorage.setItem()
-    
-    User->>Browser: Переходит к оформлению
-    Browser->>Server: POST /auth.php (логин/пароль)
-    Server->>DB: SELECT * FROM users
-    DB-->>Server: Данные пользователя
-    Server->>Server: password_verify()
-    Server-->>Browser: Сессия + редирект
-    
-    Note over Browser,DB: Авторизованный пользователь
 ```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                   users                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ id (PK) │ name │ email (UK) │ password_hash │ role │ created_at    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│              ┌─────────────────────┼─────────────────────┐                  │
+│              │                     │                     │                  │
+│              ▼                     ▼                     ▼                  │
+│  ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐     │
+│  │      orders       │   │       logs        │   │  (корзина в       │     │
+│  ├───────────────────┤   ├───────────────────┤   │   localStorage)   │     │
+│  │ id (PK)           │   │ id (PK)           │   │                   │     │
+│  │ user_id (FK) ─────┼───│ user_email        │   │  Хранится на      │     │
+│  │ total             │   │ action            │   │  стороне клиента  │     │
+│  │ status            │   │ ip_address        │   │                   │     │
+│  │ created_at        │   │ message           │   └───────────────────┘     │
+│  └─────────┬─────────┘   │ created_at        │                             │
+│            │             └───────────────────┘                             │
+│            │                                                               │
+│            │ 1                                                             │
+│            ▼                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                           order_items                               │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │   │
+│  │  │ id (PK) │ order_id (FK) │ product_id (FK) │ quantity │ price │   │   │
+│  │  └─────────────────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                            products                                 │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │   │
+│  │  │ id (PK) │ name │ description │ price │ category │ stock │ image │   │
+│  │  └─────────────────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Описание таблиц
+
+| Таблица | Описание | Поля |
+|---------|----------|------|
+| **users** | Пользователи системы | id, name, email, age, password_hash, role, created_at |
+| **products** | Товары (велосипеды) | id, name, description, price, category, stock, image, created_at |
+| **orders** | Заказы | id, user_id, total, status, created_at |
+| **order_items** | Позиции заказов | id, order_id, product_id, quantity, price |
+| **logs** | Логи авторизации | id, user_email, action, ip_address, message, created_at |
+
+### Типы связей
+
+| Связь | Тип | Описание |
+|-------|-----|----------|
+| users → orders | 1 : N | Один пользователь может оформить много заказов |
+| users → logs | 1 : N | Один пользователь может иметь много записей в логах |
+| orders → order_items | 1 : N | Один заказ может содержать много позиций |
+| products → order_items | 1 : N | Один товар может быть во многих заказах |
+
+### Примечание
+
+Корзина покупок (`cart`) отсутствует в базе данных, так как реализована на клиентской стороне с использованием `localStorage` браузера. Это позволяет:
+- Сохранять товары при перезагрузке страницы
+- Работать без постоянных запросов к серверу
+- Обеспечить быстродействие интерфейса
